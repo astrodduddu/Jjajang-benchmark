@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>자장면관 벤치마킹</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: #F5F5F5;
+    font-family: 'Pretendard', 'Apple SD Gothic Neo', -apple-system, sans-serif;
+  }
+
+  /* ===== Layout ===== */
+  .main {
+    display: flex; height: 100vh; overflow: hidden;
+  }
+  .graph-section {
+    flex: 1; display: flex;
+    align-items: center; justify-content: center;
+    padding: 20px;
+    min-width: 0;
+  }
+  .sidebar {
+    width: 320px; height: 100vh;
+    background: #FFF;
+    border-left: 1px solid #E8E8E8;
+    display: flex; flex-direction: column;
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
+
+  /* ===== Graph ===== */
+  .graph-card {
+    width: 100%; max-width: calc(100vh - 40px);
+    aspect-ratio: 1;
+    position: relative; background: #FFF;
+    border-radius: 14px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    padding: 48px 40px 56px 56px;
+  }
+  .graph-inner { width: 100%; height: 100%; position: relative; }
+  .axis-label {
+    position: absolute;
+    font-size: 12px; font-weight: 600; color: #999;
+    white-space: nowrap; letter-spacing: 0.3px;
+  }
+  .axis-y { left: -44px; top: 50%; transform: translateY(-50%) rotate(-90deg); }
+  .axis-x { bottom: -40px; left: 50%; transform: translateX(-50%); }
+
+  /* ===== Points ===== */
+  .point {
+    position: absolute; transform: translate(-50%, 50%);
+    z-index: 10; cursor: grab; touch-action: none;
+  }
+  .point:hover { z-index: 40; }
+  .point.dragging { z-index: 50; cursor: grabbing; }
+  .point-dot {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: #1A1A1A; color: #FFF;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9px; font-weight: 700;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+    transition: box-shadow 0.15s, background 0.15s;
+    line-height: 1;
+  }
+  .point.dragging .point-dot {
+    background: #E74C3C;
+    box-shadow: 0 0 0 4px rgba(231,76,60,0.2);
+  }
+  .point-intuition {
+    position: absolute; top: -12px; right: calc(50% + 4px);
+    font-size: 8px; font-weight: 800; color: #E74C3C;
+    pointer-events: none; line-height: 1;
+  }
+  .point-aroma {
+    position: absolute; top: -12px; left: calc(50% + 4px);
+    font-size: 8px; font-weight: 700; color: #2196F3;
+    pointer-events: none; line-height: 1;
+  }
+  .point-name {
+    position: absolute; top: 24px; left: 50%;
+    transform: translateX(-50%);
+    font-size: 8px; font-weight: 600; color: #333;
+    white-space: nowrap;
+    background: rgba(255,255,255,0.92);
+    border-radius: 2px; padding: 0 3px;
+    pointer-events: none; line-height: 1.3;
+  }
+
+  /* ===== Sidebar ===== */
+  .sb-header {
+    padding: 20px 20px 0;
+    border-bottom: 1px solid #F0F0F0;
+    padding-bottom: 16px;
+  }
+  .sb-title {
+    font-size: 20px; font-weight: 800; color: #1A1A1A;
+    letter-spacing: -0.5px; margin-bottom: 8px;
+  }
+  .sync-bar {
+    font-size: 11px; color: #999;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .sync-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #4CAF50; display: inline-block;
+  }
+  .sync-dot.loading { background: #FF9800; animation: pulse 0.8s infinite; }
+  .sync-dot.error { background: #E74C3C; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .gear-btn {
+    background: none; border: none; color: #CCC;
+    cursor: pointer; font-size: 13px; margin-left: 4px;
+  }
+  .gear-btn:hover { color: #999; }
+
+  .sb-section { border-bottom: 1px solid #F0F0F0; }
+  .sb-toggle {
+    width: 100%; padding: 14px 20px;
+    background: none; border: none;
+    font-size: 14px; font-weight: 600; color: #1A1A1A;
+    cursor: pointer; text-align: left;
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: inherit;
+  }
+  .sb-toggle:hover { background: #FAFAFA; }
+  .sb-toggle-icon { font-size: 12px; color: #AAA; transition: transform 0.2s; }
+  .sb-toggle.open .sb-toggle-icon { transform: rotate(180deg); }
+  .sb-panel {
+    max-height: 0; overflow: hidden;
+    transition: max-height 0.3s ease;
+  }
+  .sb-panel.open { max-height: 800px; }
+  .sb-panel-inner { padding: 0 20px 16px; }
+
+  /* Legend */
+  .legend-group { margin-bottom: 14px; }
+  .legend-title {
+    font-size: 11px; font-weight: 700; color: #999;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    margin-bottom: 8px;
+  }
+  .legend-item { font-size: 13px; color: #555; line-height: 1.8; }
+  .legend-key { font-weight: 700; color: #1A1A1A; margin-right: 6px; }
+  .legend-dot-sample {
+    display: inline-flex; align-items: center; gap: 8px;
+    margin-bottom: 4px; font-size: 12px; color: #555;
+  }
+  .sample-dot {
+    width: 16px; height: 16px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 8px; font-weight: 700; color: #FFF; background: #1A1A1A;
+  }
+  .sample-red { font-size: 8px; font-weight: 800; color: #E74C3C; }
+  .sample-blue { font-size: 8px; font-weight: 700; color: #2196F3; }
+
+  /* Form */
+  .form-label {
+    font-size: 11px; font-weight: 600; color: #999;
+    margin-bottom: 4px; display: block;
+  }
+  .form-input, .form-select {
+    width: 100%; padding: 9px 10px;
+    border: 1.5px solid #E0E0E0; border-radius: 8px;
+    font-size: 13px; outline: none;
+    background: #FAFAFA; color: #333; font-family: inherit;
+    margin-bottom: 10px;
+  }
+  .form-input:focus, .form-select:focus { border-color: #1A1A1A; }
+  .form-select { appearance: auto; }
+  .form-row { display: flex; gap: 8px; }
+  .form-row > div { flex: 1; }
+  .form-hint { font-size: 11px; color: #BBB; margin-bottom: 10px; }
+  .add-btn {
+    width: 100%; padding: 10px; background: #E0E0E0; color: #FFF;
+    border: none; border-radius: 8px; font-size: 13px; font-weight: 700;
+    cursor: not-allowed; transition: all 0.2s; font-family: inherit;
+  }
+  .add-btn.ready { background: #1A1A1A; cursor: pointer; }
+  .add-btn.ready:hover { background: #333; }
+
+  /* Dropdown */
+  .dd-wrap { position: relative; }
+  .dropdown {
+    position: absolute; top: 100%; left: 0; right: 0;
+    background: #FFF; border: 1.5px solid #E0E0E0; border-radius: 8px;
+    max-height: 160px; overflow-y: auto; z-index: 200;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.1); margin-top: -8px; display: none;
+  }
+  .dropdown.show { display: block; }
+  .dd-item {
+    padding: 9px 12px; font-size: 12px; cursor: pointer;
+    border-bottom: 1px solid #F5F5F5; color: #333;
+  }
+  .dd-item:hover { background: #F5F5F5; }
+  .dd-empty { padding: 12px; font-size: 12px; color: #BBB; }
+
+  /* Store list */
+  .store-list { padding: 0 20px 16px; flex: 1; overflow-y: auto; }
+  .store-list-title {
+    font-size: 11px; font-weight: 600; color: #999;
+    margin-bottom: 8px; padding-top: 12px;
+  }
+  .store-scroll { display: flex; flex-direction: column; gap: 4px; }
+  .store-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 7px 10px; background: #FAFAFA; border-radius: 6px;
+    font-size: 12px;
+  }
+  .store-row-name { font-weight: 600; color: #333; }
+  .store-row-vals { color: #AAA; font-size: 10px; }
+  .store-row-del {
+    background: none; border: none; color: #DDD;
+    cursor: pointer; font-size: 14px; padding: 0 2px; line-height: 1; margin-left: 6px;
+  }
+  .store-row-del:hover { color: #E74C3C; }
+
+  /* Setup overlay */
+  .setup-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 999; padding: 20px;
+  }
+  .setup-box {
+    background: #FFF; border-radius: 16px; padding: 28px;
+    max-width: 420px; width: 100%; box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+  }
+  .setup-box h2 { font-size: 18px; font-weight: 800; margin-bottom: 8px; color: #1A1A1A; }
+  .setup-box p { font-size: 13px; color: #666; line-height: 1.6; margin-bottom: 16px; }
+  .setup-input {
+    width: 100%; padding: 12px; border: 1.5px solid #DDD; border-radius: 8px;
+    font-size: 13px; outline: none; margin-bottom: 12px; font-family: monospace; background: #FAFAFA;
+  }
+  .setup-btn {
+    width: 100%; padding: 12px; background: #1A1A1A; color: #FFF;
+    border: none; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer;
+  }
+  .setup-err { font-size: 12px; color: #E74C3C; margin-top: 8px; display: none; }
+
+  /* ===== Mobile ===== */
+  @media (max-width: 768px) {
+    .main { flex-direction: column; overflow-y: auto; }
+    .graph-section { padding: 12px; flex: none; }
+    .graph-card {
+      max-width: 100%; width: 100%;
+      padding: 36px 28px 44px 44px;
+    }
+    .sidebar {
+      width: 100%; height: auto; border-left: none;
+      border-top: 1px solid #E8E8E8;
+    }
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== Setup Overlay ===== -->
+<div class="setup-overlay" id="setupOverlay" style="display:none">
+  <div class="setup-box">
+    <h2>Google Sheets 연결</h2>
+    <p>Apps Script 웹 앱 URL을 붙여넣으세요.<br>
+    <span style="color:#AAA;font-size:11px">https://script.google.com/macros/s/... 형태</span></p>
+    <input class="setup-input" id="setupUrlInput" placeholder="웹 앱 URL 붙여넣기" spellcheck="false">
+    <button class="setup-btn" id="setupSaveBtn">연결하기</button>
+    <div class="setup-err" id="setupErr"></div>
+  </div>
+</div>
+
+<!-- ===== Main Layout ===== -->
+<div class="main">
+
+  <!-- Graph -->
+  <div class="graph-section">
+    <div class="graph-card">
+      <div class="graph-inner" id="graphArea">
+        <div class="axis-label axis-y">향의 강도</div>
+        <div class="axis-label axis-x">감칠맛의 크기</div>
+        <svg viewBox="-30 -20 560 560" style="position:absolute;inset:0;width:100%;height:100%;overflow:visible" id="gridSvg"></svg>
+        <div id="pointsContainer"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sb-header">
+      <div class="sb-title">자장면관 벤치마킹</div>
+      <div class="sync-bar">
+        <span class="sync-dot" id="syncDot"></span>
+        <span id="syncText">연결 대기</span>
+        <button class="gear-btn" id="resetUrlBtn" title="URL 재설정">⚙</button>
+      </div>
+    </div>
+
+    <!-- Legend -->
+    <div class="sb-section">
+      <button class="sb-toggle" id="legendToggle">
+        범례 <span class="sb-toggle-icon">▼</span>
+      </button>
+      <div class="sb-panel" id="legendPanel">
+        <div class="sb-panel-inner">
+
+          <div class="legend-group">
+            <div class="legend-title">점 읽는 법</div>
+            <div class="legend-dot-sample">
+              <span class="sample-red">3</span>
+              <span class="sample-blue">AC</span>
+            </div>
+            <div class="legend-dot-sample" style="margin-left:4px">
+              <span class="sample-dot">4</span>
+            </div>
+            <div class="legend-dot-sample" style="font-size:11px;color:#888;margin-top:2px">
+              매장명
+            </div>
+            <div style="font-size:11px;color:#AAA;margin-top:6px;line-height:1.6">
+              <span class="sample-red" style="margin-right:2px">좌상</span> 감칠맛 직관성 &nbsp;
+              <span class="sample-blue" style="margin-right:2px">우상</span> 향의 유형<br>
+              <strong style="color:#555">원 안</strong> 점도 &nbsp;
+              <strong style="color:#555">하단</strong> 매장명
+            </div>
+          </div>
+
+          <div class="legend-group">
+            <div class="legend-title">향의 유형</div>
+            <div class="legend-item"><span class="legend-key">A</span>춘장향</div>
+            <div class="legend-item"><span class="legend-key">B</span>농축 육향</div>
+            <div class="legend-item"><span class="legend-key">C</span>양파 캐러멜라이즈 향</div>
+            <div class="legend-item"><span class="legend-key">D</span>불향</div>
+            <div style="font-size:11px;color:#AAA;margin-top:4px">대문자=강 / 소문자=약</div>
+          </div>
+
+          <div class="legend-group">
+            <div class="legend-title">감칠맛의 직관성</div>
+            <div class="legend-item"><span class="legend-key">1</span>매우 작음</div>
+            <div class="legend-item"><span class="legend-key">2</span>작음</div>
+            <div class="legend-item"><span class="legend-key">3</span>보통</div>
+            <div class="legend-item"><span class="legend-key">4</span>큼</div>
+            <div class="legend-item"><span class="legend-key">5</span>매우 큼</div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- Add Store -->
+    <div class="sb-section">
+      <button class="sb-toggle" id="addToggle">
+        가게 추가 <span class="sb-toggle-icon">▼</span>
+      </button>
+      <div class="sb-panel" id="addPanel">
+        <div class="sb-panel-inner">
+
+          <div class="dd-wrap">
+            <label class="form-label">매장명</label>
+            <input class="form-input" id="storeInput" type="text" placeholder="검색 또는 직접 입력" autocomplete="off">
+            <div class="dropdown" id="storeDropdown"></div>
+          </div>
+
+          <div class="form-row">
+            <div>
+              <label class="form-label">감칠맛 직관성</label>
+              <select class="form-select" id="inputIntuition">
+                <option value="">선택</option>
+                <option value="1">1</option><option value="1.5">1.5</option>
+                <option value="2">2</option><option value="2.5">2.5</option>
+                <option value="3">3</option><option value="3.5">3.5</option>
+                <option value="4">4</option><option value="4.5">4.5</option>
+                <option value="5">5</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label">향의 유형</label>
+              <input class="form-input" id="inputAroma" type="text" placeholder="예: AC, b" style="margin-bottom:10px">
+            </div>
+          </div>
+
+          <div>
+            <label class="form-label">점도</label>
+            <select class="form-select" id="inputViscosity">
+              <option value="">선택</option>
+              <option value="1">1</option><option value="1.5">1.5</option>
+              <option value="2">2</option><option value="2.5">2.5</option>
+              <option value="3">3</option><option value="3.5">3.5</option>
+              <option value="4">4</option><option value="4.5">4.5</option>
+              <option value="5">5</option>
+            </select>
+          </div>
+
+          <div class="form-hint">추가 후 점을 드래그하여 위치를 지정하세요</div>
+          <button class="add-btn" id="addStoreBtn">그래프에 추가</button>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- Registered Stores -->
+    <div class="store-list" id="storeListWrap"></div>
+
+  </div>
+</div>
+
+<script>
+// ====================================================
+// CONFIG
+// ====================================================
+const STORES_BASE = [
+  "영화루","효동각","이품","맛이차이나","강동원","태화루","안동장","송죽장",
+  "동순각","보련각","개화","미미본관","중화요리팔공","동해반점","동흥관","외래향",
+  "동해루","신성각","정","현래장","영화장","홍릉각","홍콩중화요리","옛날중국집",
+  "롯데호텔도림","북경","화승원","금석궁","대관원","신승반점 여의도점","미르차이9",
+  "호화반점","가담","일일향","홍명","공리","시추안하우스삼성점","행화촌","향원",
+  "블랙데이","산곡동덕화원","띠디","루원","촉석루","대성반점","중화일상","보보식당",
+  "초류향","대박각","중화요리하선생","황금장 중화요리","덕성각","서교동 진향",
+  "마마수제만두","진아춘","일품","미광","신승반점 본점","만다복","연정","진호각","중화루"
+];
+const GRID = 5;
+let points = [];
+let allStoreNames = [...STORES_BASE];
+let draggingId = null;
+let selectedStore = "";
+let SCRIPT_URL = "";
+
+// ====================================================
+// SYNC
+// ====================================================
+function setSyncStatus(s, t) {
+  document.getElementById("syncDot").className = "sync-dot" + (s === "loading" ? " loading" : s === "error" ? " error" : "");
+  document.getElementById("syncText").textContent = t;
+}
+
+async function apiGet() {
+  if (!SCRIPT_URL) return null;
+  setSyncStatus("loading", "동기화 중...");
+  try {
+    const r = await fetch(SCRIPT_URL);
+    const j = await r.json();
+    if (j.success) { setSyncStatus("ok", "연결됨 · " + j.data.length + "개"); return j.data; }
+    throw new Error(j.error);
+  } catch (e) { setSyncStatus("error", "동기화 실패"); console.error(e); return null; }
+}
+
+async function apiPost(body) {
+  if (!SCRIPT_URL) return null;
+  setSyncStatus("loading", "저장 중...");
+  try {
+    const r = await fetch(SCRIPT_URL, { method: "POST", body: JSON.stringify(body) });
+    const j = await r.json();
+    if (j.success) { setSyncStatus("ok", "연결됨 · " + points.length + "개"); return j; }
+    throw new Error(j.error);
+  } catch (e) { setSyncStatus("error", "저장 실패"); console.error(e); return null; }
+}
+
+// ====================================================
+// SETUP
+// ====================================================
+function checkSetup() {
+  SCRIPT_URL = localStorage.getItem("jjajang-script-url") || "";
+  if (!SCRIPT_URL) { document.getElementById("setupOverlay").style.display = "flex"; return false; }
+  document.getElementById("setupOverlay").style.display = "none";
+  return true;
+}
+
+document.getElementById("setupSaveBtn").addEventListener("click", async () => {
+  const url = document.getElementById("setupUrlInput").value.trim();
+  const err = document.getElementById("setupErr");
+  if (!url.startsWith("https://script.google.com/")) {
+    err.textContent = "올바른 Apps Script URL을 입력하세요"; err.style.display = "block"; return;
+  }
+  err.style.display = "none";
+  localStorage.setItem("jjajang-script-url", url);
+  SCRIPT_URL = url;
+  document.getElementById("setupOverlay").style.display = "none";
+  await loadData();
+});
+
+document.getElementById("resetUrlBtn").addEventListener("click", () => {
+  document.getElementById("setupUrlInput").value = SCRIPT_URL;
+  document.getElementById("setupOverlay").style.display = "flex";
+});
+
+// ====================================================
+// LOAD DATA
+// ====================================================
+async function loadData() {
+  const data = await apiGet();
+  if (!data) return;
+  points = data.map(d => ({
+    _row: d._row,
+    N: d["N"],
+    name: String(d["매장명"] || ""),
+    x: parseFloat(d["감칠맛의 크기"]) || 0,
+    y: parseFloat(d["향의 강도"]) || 0,
+    intuition: d["감칠맛의 직관성"],
+    aromaType: String(d["향의 유형"] || ""),
+    viscosity: d["점도"],
+  }));
+  // Update store names list
+  const fromSheet = points.map(p => p.name).filter(n => n);
+  allStoreNames = [...new Set([...STORES_BASE, ...fromSheet])].sort();
+  renderPoints();
+}
+
+// ====================================================
+// GRID
+// ====================================================
+function drawGrid() {
+  const svg = document.getElementById("gridSvg");
+  let h = "";
+  for (let i = 1; i <= 5; i++) {
+    const p = (i / GRID) * 500;
+    h += `<line x1="${p}" y1="0" x2="${p}" y2="500" stroke="#E8E8E8" stroke-width="1" stroke-dasharray="5 5"/>`;
+    h += `<line x1="0" y1="${500-p}" x2="500" y2="${500-p}" stroke="#E8E8E8" stroke-width="1" stroke-dasharray="5 5"/>`;
+    h += `<text x="${p}" y="524" text-anchor="middle" font-size="13" font-weight="500" fill="#BBB">${i}</text>`;
+    h += `<text x="-16" y="${500-p+5}" text-anchor="middle" font-size="13" font-weight="500" fill="#BBB">${i}</text>`;
+  }
+  h += `<line x1="0" y1="500" x2="505" y2="500" stroke="#1A1A1A" stroke-width="2"/>`;
+  h += `<line x1="0" y1="-5" x2="0" y2="500" stroke="#1A1A1A" stroke-width="2"/>`;
+  h += `<polygon points="505,500 497,495 497,505" fill="#1A1A1A"/>`;
+  h += `<polygon points="0,-5 -5,3 5,3" fill="#1A1A1A"/>`;
+  svg.innerHTML = h;
+}
+
+// ====================================================
+// RENDER POINTS
+// ====================================================
+function renderPoints() {
+  const c = document.getElementById("pointsContainer");
+  c.innerHTML = "";
+  points.forEach(pt => {
+    const lp = (pt.x / GRID) * 100;
+    const bp = (pt.y / GRID) * 100;
+    const el = document.createElement("div");
+    el.className = "point";
+    el.dataset.row = pt._row;
+    el.style.left = lp + "%";
+    el.style.bottom = bp + "%";
+
+    const viscStr = (pt.viscosity !== "" && pt.viscosity != null && pt.viscosity !== "-") ? pt.viscosity : "";
+    const intStr = (pt.intuition !== "" && pt.intuition != null && pt.intuition !== "-") ? pt.intuition : "";
+    const aromaStr = (pt.aromaType && pt.aromaType !== "-") ? pt.aromaType : "";
+
+    el.innerHTML = `
+      <span class="point-intuition">${intStr}</span>
+      <span class="point-aroma">${aromaStr}</span>
+      <div class="point-dot">${viscStr}</div>
+      <span class="point-name">${pt.name}</span>
+    `;
+    el.addEventListener("mousedown", e => startDrag(pt._row, e));
+    el.addEventListener("touchstart", e => startDrag(pt._row, e), { passive: false });
+    c.appendChild(el);
+  });
+  renderStoreList();
+}
+
+// ====================================================
+// DRAG
+// ====================================================
+function startDrag(row, e) {
+  e.preventDefault();
+  draggingId = row;
+  document.body.style.userSelect = "none";
+  const el = document.querySelector(`.point[data-row="${row}"]`);
+  if (el) el.classList.add("dragging");
+}
+
+function onMove(e) {
+  if (draggingId === null) return;
+  const cx = e.touches ? e.touches[0].clientX : e.clientX;
+  const cy = e.touches ? e.touches[0].clientY : e.clientY;
+  const rect = document.getElementById("graphArea").getBoundingClientRect();
+  let x = ((cx - rect.left) / rect.width) * GRID;
+  let y = ((rect.bottom - cy) / rect.height) * GRID;
+  x = Math.min(Math.max(x, 0), 5);
+  y = Math.min(Math.max(y, 0), 5);
+
+  const pt = points.find(p => p._row === draggingId);
+  if (pt) {
+    pt.x = x; pt.y = y;
+    const el = document.querySelector(`.point[data-row="${draggingId}"]`);
+    if (el) {
+      el.style.left = (x / GRID * 100) + "%";
+      el.style.bottom = (y / GRID * 100) + "%";
+    }
+  }
+}
+
+function onUp() {
+  if (draggingId === null) return;
+  const el = document.querySelector(`.point[data-row="${draggingId}"]`);
+  if (el) el.classList.remove("dragging");
+  const pt = points.find(p => p._row === draggingId);
+  draggingId = null;
+  document.body.style.userSelect = "";
+  if (pt) {
+    apiPost({ action: "update", row: pt._row, x: Math.round(pt.x * 100) / 100, y: Math.round(pt.y * 100) / 100 });
+  }
+  renderStoreList();
+}
+
+document.addEventListener("mousemove", onMove);
+document.addEventListener("mouseup", onUp);
+document.addEventListener("touchmove", onMove, { passive: false });
+document.addEventListener("touchend", onUp);
+
+// ====================================================
+// TOGGLES
+// ====================================================
+function setupToggle(btnId, panelId) {
+  const btn = document.getElementById(btnId);
+  const panel = document.getElementById(panelId);
+  btn.addEventListener("click", () => {
+    btn.classList.toggle("open");
+    panel.classList.toggle("open");
+  });
+}
+setupToggle("legendToggle", "legendPanel");
+setupToggle("addToggle", "addPanel");
+
+// ====================================================
+// DROPDOWN
+// ====================================================
+const storeInput = document.getElementById("storeInput");
+const storeDD = document.getElementById("storeDropdown");
+
+function showDropdown(filter) {
+  const f = filter.toLowerCase();
+  const matches = allStoreNames.filter(s => s.toLowerCase().includes(f));
+  if (!matches.length) {
+    storeDD.innerHTML = '<div class="dd-empty">결과 없음 — 직접 입력 가능</div>';
+  } else {
+    storeDD.innerHTML = matches.map(s => `<div class="dd-item">${s}</div>`).join("");
+    storeDD.querySelectorAll(".dd-item").forEach(el => {
+      el.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        selectedStore = el.textContent;
+        storeInput.value = selectedStore;
+        storeDD.classList.remove("show");
+        updateAddBtn();
+      });
+    });
+  }
+  storeDD.classList.add("show");
+}
+
+storeInput.addEventListener("focus", () => showDropdown(storeInput.value));
+storeInput.addEventListener("input", () => {
+  selectedStore = storeInput.value.trim();
+  showDropdown(storeInput.value);
+  updateAddBtn();
+});
+storeInput.addEventListener("blur", () => {
+  setTimeout(() => storeDD.classList.remove("show"), 150);
+  if (!selectedStore) selectedStore = storeInput.value.trim();
+  updateAddBtn();
+});
+
+// ====================================================
+// ADD
+// ====================================================
+const inputInt = document.getElementById("inputIntuition");
+const inputAroma = document.getElementById("inputAroma");
+const inputVisc = document.getElementById("inputViscosity");
+const addBtn2 = document.getElementById("addStoreBtn");
+
+function updateAddBtn() {
+  const ok = (selectedStore || storeInput.value.trim());
+  addBtn2.className = ok ? "add-btn ready" : "add-btn";
+}
+[inputInt, inputAroma, inputVisc].forEach(el => el.addEventListener("change", updateAddBtn));
+storeInput.addEventListener("input", updateAddBtn);
+
+addBtn2.addEventListener("click", async () => {
+  const name = selectedStore || storeInput.value.trim();
+  if (!name) return;
+
+  const newPoint = {
+    "매장명": name,
+    "감칠맛의 크기": 2.5,
+    "감칠맛의 직관성": inputInt.value ? parseFloat(inputInt.value) : "",
+    "향의 강도": 2.5,
+    "향의 유형": inputAroma.value.trim() || "-",
+    "점도": inputVisc.value ? parseFloat(inputVisc.value) : "",
+  };
+
+  const localPt = {
+    _row: -Date.now(), // 임시 row
+    N: "",
+    name: name,
+    x: 2.5, y: 2.5,
+    intuition: newPoint["감칠맛의 직관성"],
+    aromaType: newPoint["향의 유형"],
+    viscosity: newPoint["점도"],
+  };
+  points.push(localPt);
+  renderPoints();
+
+  const result = await apiPost({ action: "add", point: newPoint });
+  if (result && result.row) {
+    localPt._row = result.row;
+    localPt.N = result.N;
+  }
+
+  // Add to store names if new
+  if (!allStoreNames.includes(name)) {
+    allStoreNames.push(name);
+    allStoreNames.sort();
+  }
+
+  storeInput.value = "";
+  selectedStore = "";
+  inputInt.value = "";
+  inputAroma.value = "";
+  inputVisc.value = "";
+  updateAddBtn();
+});
+
+// ====================================================
+// STORE LIST
+// ====================================================
+function renderStoreList() {
+  const wrap = document.getElementById("storeListWrap");
+  if (!points.length) { wrap.innerHTML = ""; return; }
+  let h = `<div class="store-list-title">등록된 가게 (${points.length})</div><div class="store-scroll">`;
+  points.forEach(pt => {
+    const vals = [];
+    if (pt.x != null) vals.push("감" + (Math.round(pt.x*10)/10));
+    if (pt.y != null) vals.push("향" + (Math.round(pt.y*10)/10));
+    if (pt.intuition !== "" && pt.intuition != null) vals.push("직" + pt.intuition);
+    if (pt.viscosity !== "" && pt.viscosity != null && pt.viscosity !== "-") vals.push("점" + pt.viscosity);
+    h += `<div class="store-row">
+      <span class="store-row-name">${pt.name}</span>
+      <div style="display:flex;align-items:center">
+        <span class="store-row-vals">${vals.join(" · ")}</span>
+        <button class="store-row-del" data-row="${pt._row}">✕</button>
+      </div>
+    </div>`;
+  });
+  h += "</div>";
+  wrap.innerHTML = h;
+  wrap.querySelectorAll("[data-row]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const row = parseInt(btn.dataset.row);
+      points = points.filter(p => p._row !== row);
+      renderPoints();
+      if (row > 0) await apiPost({ action: "delete", row });
+    });
+  });
+}
+
+// ====================================================
+// INIT
+// ====================================================
+drawGrid();
+if (checkSetup()) loadData();
+</script>
+</body>
+</html>
