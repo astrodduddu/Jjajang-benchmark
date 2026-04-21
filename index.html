@@ -562,8 +562,9 @@ function drawGrid() {
 // RENDER POINTS
 // ====================================================
 function getJitteredPositions(pts) {
-  // 같은 (x, y) 좌표를 가진 점들을 원형으로 분산 — 라벨 겹침 방지
-  // 클러스터가 크면 자동으로 이중/삼중 링으로 확장
+  // 같은 (x, y) 좌표를 가진 점들을 작은 반경의 원형으로 분산
+  // 점 위치는 원래 좌표에 최대한 가깝게 유지 (최대 ~0.2 그리드)
+  // 라벨은 점의 방위에 따라 바깥쪽으로 뻗어나가서 서로 겹치지 않게
   const result = {};
   const groups = {};
   pts.forEach(pt => {
@@ -572,70 +573,34 @@ function getJitteredPositions(pts) {
     groups[key].push(pt);
   });
 
-  // 라벨 폭 추정 (SVG px, 폰트 8px 기준)
-  const estimateWidth = (str) => {
-    let w = 0;
-    for (const c of (str || "")) {
-      if (/[\uac00-\ud7af]/.test(c)) w += 8;
-      else if (/\s/.test(c)) w += 3;
-      else w += 5;
-    }
-    return w;
-  };
-
-  const VERT_EXTENT = 32;          // 점+라벨 세로 높이
-  const GAP = 6;                    // 라벨 간 여유
-  const PX_PER_GRID = 520 / 5;      // 104
+  const PX_PER_GRID = 520 / 5; // 104
 
   Object.values(groups).forEach(group => {
     const N = group.length;
     if (N === 1) {
       const pt = group[0];
-      result[pt._row] = { x: pt.x, y: pt.y };
+      result[pt._row] = { x: pt.x, y: pt.y, labelDir: null };
       return;
     }
 
-    const maxLabelW = Math.max(...group.map(pt => estimateWidth(pt.name)));
-    const labelSpacing = Math.max(maxLabelW + GAP, VERT_EXTENT);
+    // 타이트한 반경: 좌표 보존 우선
+    // N이 커질수록 조금만 더 벌림 (최대 22px = 0.21 그리드)
+    let R_svg;
+    if (N === 2) R_svg = 14;
+    else if (N === 3) R_svg = 15;
+    else if (N === 4) R_svg = 17;
+    else if (N <= 6) R_svg = 20;
+    else R_svg = 22;
 
-    // 반지름 R의 원에 들어갈 수 있는 라벨 개수
-    const capacityAt = (R) => Math.max(2, Math.floor(2 * Math.PI * R / labelSpacing));
+    const gridR = R_svg / PX_PER_GRID;
 
-    // 첫 링 반지름: 최대 6개까지 수용
-    let innerR;
-    if (N === 2) {
-      innerR = VERT_EXTENT / 2 + 2;     // 세로로 두 점
-    } else {
-      const targetFirst = Math.min(N, 6);
-      innerR = labelSpacing / (2 * Math.sin(Math.PI / targetFirst));
-    }
-
-    // 점을 링 단위로 배치
-    let placed = 0;
-    let ringR = innerR;
-    let ringIdx = 0;
-    const placements = [];
-
-    while (placed < N) {
-      const cap = capacityAt(ringR);
-      const toPlace = Math.min(N - placed, cap);
-      // 인접 링끼리 각도 엇갈림
-      const offset = ringIdx % 2 === 1 ? Math.PI / toPlace : 0;
-      for (let k = 0; k < toPlace; k++) {
-        const angle = -Math.PI / 2 + offset + (2 * Math.PI * k) / toPlace;
-        placements.push({ idx: placed + k, R: ringR, angle });
-      }
-      placed += toPlace;
-      ringIdx++;
-      ringR += VERT_EXTENT + 2;  // 다음 링은 세로 높이만큼 바깥으로
-    }
-
-    placements.forEach(({ idx, R, angle }) => {
-      const pt = group[idx];
-      const gridR = R / PX_PER_GRID;
+    group.forEach((pt, idx) => {
+      // idx=0 을 위(12시)로, 시계방향 분포
+      const angle = -Math.PI / 2 + (2 * Math.PI * idx) / N;
       result[pt._row] = {
         x: pt.x + gridR * Math.cos(angle),
-        y: pt.y - gridR * Math.sin(angle),  // 그래프 y는 위가 +
+        y: pt.y - gridR * Math.sin(angle),
+        labelDir: angle,
       };
     });
   });
@@ -649,9 +614,10 @@ function renderPoints() {
   const jitter = getJitteredPositions(points);
 
   points.forEach(pt => {
-    const pos = jitter[pt._row] || { x: pt.x, y: pt.y };
+    const pos = jitter[pt._row] || { x: pt.x, y: pt.y, labelDir: null };
     const sx = toSvgX(pos.x);
     const sy = toSvgY(pos.y);
+    const labelDir = pos.labelDir;
 
     const viscStr = (pt.viscosity !== "" && pt.viscosity != null && pt.viscosity !== "-") ? String(pt.viscosity) : "";
     const intStr  = (pt.intuition !== "" && pt.intuition != null && pt.intuition !== "-") ? String(pt.intuition) : "";
@@ -712,16 +678,50 @@ function renderPoints() {
       g.appendChild(t);
     }
 
-    // 매장명 (아래) — 메모형 항목은 더 작게
+    // 매장명 — 방향 인지형: 클러스터 내 점의 방위에 따라 라벨이 바깥으로 뻗음
     const isMemo = /^(불쾌|된장)/.test(pt.name || "");
     const nameText = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    nameText.setAttribute("y", "17");
-    nameText.setAttribute("text-anchor", "middle");
     nameText.setAttribute("fill", isMemo ? "#888" : "#333");
     nameText.setAttribute("font-size", isMemo ? "7" : "8");
     nameText.setAttribute("font-weight", isMemo ? "500" : "600");
     nameText.setAttribute("font-family", "inherit");
     nameText.textContent = pt.name;
+
+    if (labelDir === null) {
+      // 단독 점: 기본 아래
+      nameText.setAttribute("x", "0");
+      nameText.setAttribute("y", "17");
+      nameText.setAttribute("text-anchor", "middle");
+    } else {
+      // 각도 정규화 (-180, 180]
+      let deg = labelDir * 180 / Math.PI;
+      deg = deg - 360 * Math.floor((deg + 180) / 360);
+      // 위/아래 사분면은 좁게(60°), 좌우는 넓게(120°)
+      // → 같은 사분면 내 두 라벨의 수직 분리 확보
+      if (deg > -120 && deg <= -60) {
+        // 위
+        nameText.setAttribute("x", "0");
+        nameText.setAttribute("y", "-16");
+        nameText.setAttribute("text-anchor", "middle");
+      } else if (deg > -60 && deg <= 60) {
+        // 오른쪽
+        nameText.setAttribute("x", "11");
+        nameText.setAttribute("y", "0");
+        nameText.setAttribute("text-anchor", "start");
+        nameText.setAttribute("dominant-baseline", "central");
+      } else if (deg > 60 && deg <= 120) {
+        // 아래
+        nameText.setAttribute("x", "0");
+        nameText.setAttribute("y", "17");
+        nameText.setAttribute("text-anchor", "middle");
+      } else {
+        // 왼쪽
+        nameText.setAttribute("x", "-11");
+        nameText.setAttribute("y", "0");
+        nameText.setAttribute("text-anchor", "end");
+        nameText.setAttribute("dominant-baseline", "central");
+      }
+    }
     g.appendChild(nameText);
 
     g.addEventListener("mousedown", e => startDrag(pt._row, e));
