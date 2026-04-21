@@ -202,10 +202,17 @@
   }
   .store-scroll { display: flex; flex-direction: column; gap: 4px; }
   .store-row {
-    display: flex; justify-content: space-between; align-items: center;
-    padding: 7px 10px; background: #FAFAFA; border-radius: 6px;
+    background: #FAFAFA; border-radius: 6px;
     font-size: 12px;
+    transition: background 0.15s;
   }
+  .store-row-main {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 7px 10px; cursor: pointer;
+  }
+  .store-row-main:hover { background: #F0F0F0; border-radius: 6px; }
+  .store-row.editing { background: #EEF1F5; }
+  .store-row.editing .store-row-main:hover { background: transparent; }
   .store-row-name { font-weight: 600; color: #333; }
   .store-row-vals { color: #AAA; font-size: 10px; }
   .store-row-del {
@@ -213,6 +220,37 @@
     cursor: pointer; font-size: 14px; padding: 0 2px; line-height: 1; margin-left: 6px;
   }
   .store-row-del:hover { color: #E74C3C; }
+  .store-row-edit {
+    display: none;
+    padding: 0 10px 10px;
+    border-top: 1px solid #E0E0E0; margin-top: 2px;
+  }
+  .store-row.editing .store-row-edit { display: block; }
+  .edit-field { margin-top: 8px; }
+  .edit-field label {
+    font-size: 10px; font-weight: 600; color: #999;
+    display: block; margin-bottom: 3px;
+  }
+  .edit-field input, .edit-field select {
+    width: 100%; padding: 6px 8px; font-size: 12px;
+    border: 1px solid #DDD; border-radius: 5px;
+    background: #FFF; font-family: inherit; color: #333;
+    outline: none; box-sizing: border-box;
+  }
+  .edit-field input:focus, .edit-field select:focus { border-color: #1A1A1A; }
+  .edit-row { display: flex; gap: 6px; }
+  .edit-row > .edit-field { flex: 1; }
+  .edit-actions { display: flex; gap: 6px; margin-top: 10px; }
+  .edit-btn {
+    flex: 1; padding: 7px; font-size: 12px; font-weight: 600;
+    border-radius: 5px; cursor: pointer; font-family: inherit;
+    border: 1px solid transparent;
+  }
+  .edit-btn-cancel { background: #FFF; color: #888; border-color: #DDD; }
+  .edit-btn-cancel:hover { color: #333; border-color: #999; }
+  .edit-btn-save { background: #1A1A1A; color: #FFF; }
+  .edit-btn-save:hover { background: #333; }
+  .edit-btn-save.saving { background: #999; cursor: wait; }
 
   /* Setup overlay */
   .setup-overlay {
@@ -629,12 +667,12 @@ function renderPoints() {
     g.style.cursor = "grab";
     g.style.userSelect = "none";
 
-    // 원 (축소)
+    // 원 (타이트) — 테두리가 안쪽 숫자에 거의 닿음
     const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-    circle.setAttribute("r", "7");
+    circle.setAttribute("r", "4");
     circle.setAttribute("fill", "#1A1A1A");
     circle.setAttribute("stroke", "#fff");
-    circle.setAttribute("stroke-width", "1.2");
+    circle.setAttribute("stroke-width", "1");
     g.appendChild(circle);
 
     // 점도 (원 안)
@@ -650,11 +688,11 @@ function renderPoints() {
       g.appendChild(t);
     }
 
-    // 감칠맛 직관성 (왼쪽 위, 빨강)
+    // 감칠맛 직관성 (왼쪽 위, 빨강) — 원에 바짝 붙음
     if (intStr) {
       const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      t.setAttribute("x", "-9");
-      t.setAttribute("y", "-9");
+      t.setAttribute("x", "-5");
+      t.setAttribute("y", "-6");
       t.setAttribute("text-anchor", "end");
       t.setAttribute("fill", "#E74C3C");
       t.setAttribute("font-size", "8");
@@ -664,11 +702,11 @@ function renderPoints() {
       g.appendChild(t);
     }
 
-    // 향의 유형 (오른쪽 위, 파랑)
+    // 향의 유형 (오른쪽 위, 파랑) — 원에 바짝 붙음
     if (aromaStr) {
       const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      t.setAttribute("x", "9");
-      t.setAttribute("y", "-9");
+      t.setAttribute("x", "5");
+      t.setAttribute("y", "-6");
       t.setAttribute("text-anchor", "start");
       t.setAttribute("fill", "#2196F3");
       t.setAttribute("font-size", "8");
@@ -690,33 +728,31 @@ function renderPoints() {
     if (labelDir === null) {
       // 단독 점: 기본 아래
       nameText.setAttribute("x", "0");
-      nameText.setAttribute("y", "17");
+      nameText.setAttribute("y", "14");
       nameText.setAttribute("text-anchor", "middle");
     } else {
       // 각도 정규화 (-180, 180]
       let deg = labelDir * 180 / Math.PI;
       deg = deg - 360 * Math.floor((deg + 180) / 360);
-      // 위/아래 사분면은 좁게(60°), 좌우는 넓게(120°)
-      // → 같은 사분면 내 두 라벨의 수직 분리 확보
       if (deg > -120 && deg <= -60) {
         // 위
         nameText.setAttribute("x", "0");
-        nameText.setAttribute("y", "-16");
+        nameText.setAttribute("y", "-14");
         nameText.setAttribute("text-anchor", "middle");
       } else if (deg > -60 && deg <= 60) {
         // 오른쪽
-        nameText.setAttribute("x", "11");
+        nameText.setAttribute("x", "7");
         nameText.setAttribute("y", "0");
         nameText.setAttribute("text-anchor", "start");
         nameText.setAttribute("dominant-baseline", "central");
       } else if (deg > 60 && deg <= 120) {
         // 아래
         nameText.setAttribute("x", "0");
-        nameText.setAttribute("y", "17");
+        nameText.setAttribute("y", "14");
         nameText.setAttribute("text-anchor", "middle");
       } else {
         // 왼쪽
-        nameText.setAttribute("x", "-11");
+        nameText.setAttribute("x", "-7");
         nameText.setAttribute("y", "0");
         nameText.setAttribute("text-anchor", "end");
         nameText.setAttribute("dominant-baseline", "central");
@@ -901,9 +937,22 @@ addBtn2.addEventListener("click", async () => {
 // ====================================================
 // STORE LIST
 // ====================================================
+function escapeHtml(s) {
+  return String(s || "").replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+
 function renderStoreList() {
   const wrap = document.getElementById("storeListWrap");
   if (!points.length) { wrap.innerHTML = ""; return; }
+
+  const scaleOpts = ["", "1", "1.5", "2", "2.5", "3", "3.5", "4", "4.5", "5"];
+  const optsHtml = (selected) => scaleOpts.map(v => {
+    const s = String(selected == null ? "" : selected);
+    return `<option value="${v}"${s === v ? " selected" : ""}>${v || "—"}</option>`;
+  }).join("");
+
   let h = `<div class="store-list-title">등록된 가게 (${points.length})</div><div class="store-scroll">`;
   points.forEach(pt => {
     const vals = [];
@@ -911,22 +960,113 @@ function renderStoreList() {
     if (pt.y != null) vals.push("향" + (Math.round(pt.y*10)/10));
     if (pt.intuition !== "" && pt.intuition != null) vals.push("직" + pt.intuition);
     if (pt.viscosity !== "" && pt.viscosity != null && pt.viscosity !== "-") vals.push("점" + pt.viscosity);
-    h += `<div class="store-row">
-      <span class="store-row-name">${pt.name}</span>
-      <div style="display:flex;align-items:center">
-        <span class="store-row-vals">${vals.join(" · ")}</span>
-        <button class="store-row-del" data-row="${pt._row}">✕</button>
+    const aromaVal = (pt.aromaType && pt.aromaType !== "-") ? pt.aromaType : "";
+
+    h += `<div class="store-row" data-row="${pt._row}">
+      <div class="store-row-main">
+        <span class="store-row-name">${escapeHtml(pt.name)}</span>
+        <div style="display:flex;align-items:center">
+          <span class="store-row-vals">${vals.join(" · ")}</span>
+          <button class="store-row-del" data-row="${pt._row}" title="삭제">✕</button>
+        </div>
+      </div>
+      <div class="store-row-edit">
+        <div class="edit-field">
+          <label>매장명</label>
+          <input class="edit-name" type="text" value="${escapeHtml(pt.name)}">
+        </div>
+        <div class="edit-row">
+          <div class="edit-field">
+            <label>직관성</label>
+            <select class="edit-int">${optsHtml(pt.intuition)}</select>
+          </div>
+          <div class="edit-field">
+            <label>향 유형</label>
+            <input class="edit-aroma" type="text" value="${escapeHtml(aromaVal)}" placeholder="예: AC, b">
+          </div>
+          <div class="edit-field">
+            <label>점도</label>
+            <select class="edit-visc">${optsHtml(pt.viscosity)}</select>
+          </div>
+        </div>
+        <div class="edit-actions">
+          <button class="edit-btn edit-btn-cancel">취소</button>
+          <button class="edit-btn edit-btn-save">저장</button>
+        </div>
       </div>
     </div>`;
   });
   h += "</div>";
   wrap.innerHTML = h;
-  wrap.querySelectorAll("[data-row]").forEach(btn => {
-    btn.addEventListener("click", async () => {
+
+  // 삭제
+  wrap.querySelectorAll(".store-row-del").forEach(btn => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
       const row = parseInt(btn.dataset.row);
       points = points.filter(p => p._row !== row);
       renderPoints();
       if (row > 0) await apiPost({ action: "delete", row });
+    });
+  });
+
+  // 행 클릭 → 편집 토글
+  wrap.querySelectorAll(".store-row-main").forEach(main => {
+    main.addEventListener("click", (e) => {
+      if (e.target.classList.contains("store-row-del")) return;
+      const row = main.closest(".store-row");
+      wrap.querySelectorAll(".store-row.editing").forEach(r => {
+        if (r !== row) r.classList.remove("editing");
+      });
+      row.classList.toggle("editing");
+    });
+  });
+
+  // 취소
+  wrap.querySelectorAll(".edit-btn-cancel").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      btn.closest(".store-row").classList.remove("editing");
+    });
+  });
+
+  // 저장
+  wrap.querySelectorAll(".edit-btn-save").forEach(btn => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const rowEl = btn.closest(".store-row");
+      const rowId = parseInt(rowEl.dataset.row);
+      const pt = points.find(p => p._row === rowId);
+      if (!pt) return;
+
+      const newName = rowEl.querySelector(".edit-name").value.trim();
+      const newIntRaw = rowEl.querySelector(".edit-int").value;
+      const newAroma = rowEl.querySelector(".edit-aroma").value.trim();
+      const newViscRaw = rowEl.querySelector(".edit-visc").value;
+
+      const newInt = newIntRaw ? parseFloat(newIntRaw) : "";
+      const newVisc = newViscRaw ? parseFloat(newViscRaw) : "";
+      const aromaOut = newAroma || "-";
+
+      // 로컬 즉시 반영
+      pt.name = newName;
+      pt.intuition = newInt;
+      pt.aromaType = aromaOut;
+      pt.viscosity = newVisc;
+
+      rowEl.classList.remove("editing");
+      renderPoints();
+      renderStoreList();
+
+      // 서버 전송 (시트 헤더명 기준). sync 상태 바에서 결과 확인 가능
+      await apiPost({
+        action: "update",
+        row: rowId,
+        "매장명": newName,
+        "감칠맛의 직관성": newInt,
+        "향의 유형": aromaOut,
+        "점도": newVisc,
+      });
     });
   });
 }
