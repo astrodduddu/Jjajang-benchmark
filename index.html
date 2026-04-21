@@ -604,10 +604,11 @@ function getJitteredPositions(pts) {
   // 같은 (x, y) 좌표를 가진 점들을 작은 반경의 원형으로 분산
   // 점 위치는 원래 좌표에 최대한 가깝게 유지 (최대 ~0.2 그리드)
   // 라벨은 점의 방위에 따라 바깥쪽으로 뻗어나가서 서로 겹치지 않게
+  // 버킷 정밀도 0.01 — 저장된 좌표가 완전히 동일한 경우에만 분산
   const result = {};
   const groups = {};
   pts.forEach(pt => {
-    const key = `${Math.round(pt.x*10)}_${Math.round(pt.y*10)}`;
+    const key = `${(pt.x ?? 0).toFixed(2)}_${(pt.y ?? 0).toFixed(2)}`;
     if (!groups[key]) groups[key] = [];
     groups[key].push(pt);
   });
