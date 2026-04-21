@@ -454,6 +454,7 @@ let points = [];
 let allStoreNames = [...STORES_BASE];
 let draggingId = null;
 let selectedStore = "";
+const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxh7v3Z77mw7MGXf9RHKV2JbvK9xJk5XCsxcqbktYnNSJXfEzppu5LRg-nNCyB2GmU1/exec";
 let SCRIPT_URL = "";
 
 // ====================================================
@@ -490,7 +491,7 @@ async function apiPost(body) {
 // SETUP
 // ====================================================
 function checkSetup() {
-  SCRIPT_URL = localStorage.getItem("jjajang-script-url") || "";
+  SCRIPT_URL = localStorage.getItem("jjajang-script-url") || DEFAULT_SCRIPT_URL;
   if (!SCRIPT_URL) { document.getElementById("setupOverlay").style.display = "flex"; return false; }
   document.getElementById("setupOverlay").style.display = "none";
   return true;
